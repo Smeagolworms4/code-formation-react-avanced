@@ -1,0 +1,98 @@
+
+export function buildModelHelper<
+	M,
+	H extends (Partial<M> & { _self: M }) = any,
+	C = any
+>(
+	helper: H,
+	extendsList: ((...args: any) => C)[] = []
+): (data: Nullable<M>) => M & H & C {
+	return data => {
+		if (typeof data === 'undefined') {
+			return undefined as any;
+		}
+		if (data === null) {
+			return null;
+		}
+		if ((data as any).__is_helper__) {
+			return data;
+		}
+
+		const helperValue: any = {};
+		for (const [ prop, descriptor ] of Object.entries(Object.getOwnPropertyDescriptors(helper))) {
+			if (descriptor.value) {
+				helperValue[prop] = descriptor.value;
+			}
+		}
+
+		for (const ext of extendsList) {
+			data = ext(data) as any;
+		}
+
+		return new Proxy<M & H>(data as any, {
+			get(target: any, prop, proxy) {
+				if (prop === '__is_helper__') {
+					return true;
+				}
+				if (prop === '_self') {
+					return target;
+				}
+				const descriptor = Object.getOwnPropertyDescriptor(helper, prop);
+				if (descriptor?.get) {
+					return descriptor.get.bind(proxy)();
+				}
+				if (typeof descriptor?.value === 'function') {
+					return descriptor.value.bind(proxy);
+				}
+				if (descriptor?.value) {
+					return helperValue[prop];
+				}
+				return target[prop];
+			},
+			set: function(target: any, prop, value, proxy) {
+				const descriptor = Object.getOwnPropertyDescriptor(helper, prop);
+				if (descriptor?.set) {
+					descriptor.set.bind(proxy)(value);
+					return true;
+				}
+				if (descriptor?.value) {
+					helperValue[prop] = value;
+					return true;
+				}
+				target[prop] = value;
+				return true;
+			},
+			has(target: M & H, prop): boolean {
+				// eslint-disable-next-line no-prototype-builtins
+				return target.hasOwnProperty(prop) || helperValue.hasOwnProperty(prop);
+			},
+		});
+	};
+}
+
+
+export insterface User {
+	id: string;
+	firstname: string;
+	lastname: string;
+	created_at: string;
+}
+
+
+export const hUser = buildModelHelper<Customer>({
+	get fullName() {
+		return `${this.firstname} ${this.lastname}`.trim();
+	},
+	get created_at(): Date {
+		return this._self.created_at ? new Date(this._self.created_at) : null;
+	},
+	set created_at(value: Date) {
+		return this._self.created_at = created_at?.value.toISOString() ?? null;
+	}
+});
+
+
+export type JHUser = ReturnType<typeof hUser>;
+
+
+const userHelper = hUser(hUser);
